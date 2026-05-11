@@ -588,13 +588,18 @@ textarea.form-control { resize: vertical; min-height: 80px; }
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Data de entrada</label>
-        <input type="date" id="g-entrada" class="form-control">
+        <label class="form-label">Data de abertura</label>
+        <input type="date" id="g-entrada" class="form-control" readonly>
       </div>
-      <div class="form-group">
+      <div class="form-group admin-only">
         <label class="form-label">Prazo máximo</label>
         <input type="date" id="g-prazo" class="form-control" readonly>
       </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Data de entrega física para nós</label>
+      <input type="date" id="g-entrega-fisica" class="form-control">
+      <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block">Preencha quando entregar o item pessoalmente. O prazo de 90 dias conta a partir desta data.</small>
     </div>
     <div class="form-group admin-only" id="g-destino-group">
       <label class="form-label">Encaminhar para</label>
@@ -919,9 +924,25 @@ async function loadDashboard() {
   document.getElementById('dash-subtitle').textContent = sub;
 
   const alertDiv = document.getElementById('dash-alertas');
-  if (vencendo > 0) {
-    alertDiv.innerHTML = `<div class="alert alert-warning">⚠️ ${vencendo} garantia${vencendo>1?'s':''} vencendo em até 7 dias</div>`;
-  } else alertDiv.innerHTML = '';
+  let alertas = [];
+  if (vencendo > 0) alertas.push(`⚠️ ${vencendo} garantia${vencendo>1?'s':''} vencendo em até 7 dias`);
+  
+  if (currentProfile.role === 'admin') {
+    const displicentes = data.filter(g => g.dias_para_entregar && g.dias_para_entregar > 7);
+    if (displicentes.length > 0) alertas.push(`🚨 ${displicentes.length} garantia${displicentes.length>1?'s com revendedoras que demoraram':' com revendedora que demorou'} mais de 7 dias para entregar`);
+    
+    const aguardando = data.filter(g => !g.data_entrega_fisica && g.status !== 'entregue');
+    if (aguardando.length > 0) {
+      const atrasadas = aguardando.filter(g => {
+        const abertura = new Date(g.data_entrada + 'T00:00:00');
+        const hoje2 = new Date(); hoje2.setHours(0,0,0,0);
+        return Math.ceil((hoje2 - abertura) / 86400000) > 7;
+      });
+      if (atrasadas.length > 0) alertas.push(`📦 ${atrasadas.length} revendedora${atrasadas.length>1?'s':''} com item aberto há mais de 7 dias sem entrega física`);
+    }
+  }
+  
+  alertDiv.innerHTML = alertas.map(a => `<div class="alert alert-warning">${a}</div>`).join('');
 
   const recentes = data.slice(0, 5);
   const recentDiv = document.getElementById('dash-recentes');
@@ -985,6 +1006,9 @@ function renderGarantiaCard(g) {
 
   const statusMap = { aberta:'badge-aberta', em_conserto:'badge-em_conserto', pronta:'badge-pronta', entregue:'badge-entregue' };
   const statusLabel = { aberta:'Aberta', em_conserto:'Em conserto', pronta:'Pronta', entregue:'Entregue' };
+  const isAdminView = currentProfile && currentProfile.role === 'admin';
+  const badgeClass = isAdminView ? statusMap[g.status] : (g.status === 'entregue' ? 'badge-entregue' : 'badge-em_conserto');
+  const badgeLabel = isAdminView ? statusLabel[g.status] : (g.status === 'entregue' ? 'Entregue' : 'Em andamento');
   const nextLabel = { aberta:'▶ Em conserto', em_conserto:'▶ Pronta', pronta:'▶ Entregue' };
   const isAdminCard = currentProfile && currentProfile.role === 'admin';
   const statusBtn = isAdminCard && g.status !== 'entregue'
@@ -998,7 +1022,7 @@ function renderGarantiaCard(g) {
       <div class="garantia-info">
         <div class="garantia-item">${g.descricao_item}</div>
         <div class="garantia-cliente">👤 ${g.nome_cliente}</div>
-        <span class="badge ${statusMap[g.status]}">${statusLabel[g.status]}</span>
+        <span class="badge ${badgeClass}">${badgeLabel}</span>
       </div>
     </div>
     <div class="garantia-footer">
@@ -1045,10 +1069,12 @@ async function verGarantia(id) {
       <div class="detail-row"><div class="detail-key">Cliente</div><div class="detail-val">${g.nome_cliente}${g.telefone_cliente ? ' · ' + g.telefone_cliente : ''}</div></div>
       <div class="detail-row"><div class="detail-key">Problema</div><div class="detail-val">${g.problema_relatado}</div></div>
       <div class="detail-row"><div class="detail-key">Status</div><div class="detail-val">${statusMap[g.status]}</div></div>
-      <div class="detail-row"><div class="detail-key">Entrada</div><div class="detail-val">${formatDate(g.data_entrada)}</div></div>
-      <div class="detail-row"><div class="detail-key">Prazo máx.</div><div class="detail-val">${formatDate(g.prazo_maximo)}</div></div>
-      <div class="detail-row"><div class="detail-key">Destino</div><div class="detail-val">${destMap[g.destino] || g.destino}${g.destino_detalhe ? ' — ' + g.destino_detalhe : ''}</div></div>
-      ${g.observacoes ? `<div class="detail-row"><div class="detail-key">Obs.</div><div class="detail-val">${g.observacoes}</div></div>` : ''}
+      <div class="detail-row"><div class="detail-key">Abertura</div><div class="detail-val">${formatDate(g.data_entrada)}</div></div>
+      <div class="detail-row"><div class="detail-key">Entrega física</div><div class="detail-val">${g.data_entrega_fisica ? formatDate(g.data_entrega_fisica) : '<span style="color:var(--warning)">⏳ Aguardando entrega</span>'}</div></div>
+      ${isAdmin && g.data_entrega_fisica ? `<div class="detail-row"><div class="detail-key">Prazo máx.</div><div class="detail-val">${formatDate(g.prazo_maximo)}</div></div>` : ''}
+      ${isAdmin && g.dias_para_entregar ? `<div class="detail-row"><div class="detail-key">Dias p/ entregar</div><div class="detail-val" style="color:${g.dias_para_entregar > 7 ? 'var(--danger)' : 'var(--success)'}">${g.dias_para_entregar} dia${g.dias_para_entregar !== 1 ? 's' : ''} ${g.dias_para_entregar > 7 ? '⚠️' : '✅'}</div></div>` : ''}
+      ${isAdmin ? `<div class="detail-row"><div class="detail-key">Destino</div><div class="detail-val">${destMap[g.destino] || g.destino}${g.destino_detalhe ? ' — ' + g.destino_detalhe : ''}</div></div>` : ''}
+      ${isAdmin && g.observacoes ? `<div class="detail-row"><div class="detail-key">Obs.</div><div class="detail-val">${g.observacoes}</div></div>` : ''}
     </div>
     <div class="detail-actions">
       ${adminActions}
@@ -1062,7 +1088,7 @@ function openNovaGarantia() {
   document.getElementById('g-edit-id').value = '';
   document.getElementById('modal-gTitle').textContent = 'Nova Garantia';
   document.getElementById('g-status-group').style.display = 'none';
-  ['g-desc','g-cliente','g-tel','g-problema','g-destino-det','g-obs'].forEach(id => document.getElementById(id).value = '');
+  ['g-desc','g-cliente','g-tel','g-problema','g-destino-det','g-obs','g-entrega-fisica'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('g-destino').value = '';
   document.getElementById('g-foto-preview').style.display = 'none';
   document.getElementById('g-foto-placeholder').style.display = 'block';
@@ -1088,6 +1114,7 @@ async function editarGarantia(id) {
   document.getElementById('g-destino').value = g.destino;
   document.getElementById('g-destino-det').value = g.destino_detalhe || '';
   document.getElementById('g-obs').value = g.observacoes || '';
+  document.getElementById('g-entrega-fisica').value = g.data_entrega_fisica || '';
   if (currentProfile.role === 'admin') {
     document.getElementById('g-status-group').style.display = 'block';
     document.getElementById('g-status').value = g.status;
@@ -1128,6 +1155,18 @@ async function salvarGarantia() {
     ? (document.getElementById('g-destino').value || existing.destino || 'outro')
     : (existing.destino || 'outro');
 
+  const entregaFisica = document.getElementById('g-entrega-fisica').value || null;
+  let prazoMaximo = existing.prazo_maximo || document.getElementById('g-prazo').value;
+  let diasParaEntregar = existing.dias_para_entregar || null;
+
+  if (entregaFisica) {
+    const dataAbertura = new Date(document.getElementById('g-entrada').value + 'T00:00:00');
+    const dataEntrega = new Date(entregaFisica + 'T00:00:00');
+    diasParaEntregar = Math.ceil((dataEntrega - dataAbertura) / 86400000);
+    const prazoD = new Date(dataEntrega); prazoD.setDate(prazoD.getDate() + 90);
+    prazoMaximo = prazoD.toISOString().split('T')[0];
+  }
+
   const payload = {
     revendedora_id: currentUser.id,
     descricao_item: desc,
@@ -1135,7 +1174,9 @@ async function salvarGarantia() {
     telefone_cliente: document.getElementById('g-tel').value.trim() || null,
     problema_relatado: problema,
     data_entrada: document.getElementById('g-entrada').value,
-    prazo_maximo: document.getElementById('g-prazo').value,
+    prazo_maximo: prazoMaximo,
+    data_entrega_fisica: entregaFisica,
+    dias_para_entregar: diasParaEntregar,
     destino,
     destino_detalhe: isAdm ? (document.getElementById('g-destino-det').value.trim() || null) : (existing.destino_detalhe || null),
     observacoes: isAdm ? (document.getElementById('g-obs').value.trim() || null) : (existing.observacoes || null),
