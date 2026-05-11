@@ -1019,11 +1019,18 @@ async function verGarantia(id) {
   let fotoHtml = g.foto_url ? `<img src="${g.foto_url}" class="detail-foto">` : '';
 
   let adminActions = '';
-  if (isAdmin || currentProfile.role === 'revendedora') {
+  if (isAdmin) {
     adminActions = `
       <button class="btn-secondary btn-sm" onclick="editarGarantia('${g.id}')">✏️ Editar</button>
-      ${isAdmin ? `<button class="btn-secondary btn-sm" onclick="mudarStatus('${g.id}')">🔄 Status</button>` : ''}
+      <select onchange="mudarStatusDireto('${g.id}', this.value)" class="form-control" style="width:auto;padding:7px 12px;font-size:12px;border-radius:8px;cursor:pointer;">
+        <option value="aberta" ${g.status==='aberta'?'selected':''}>🔵 Aberta</option>
+        <option value="em_conserto" ${g.status==='em_conserto'?'selected':''}>🟡 Em conserto</option>
+        <option value="pronta" ${g.status==='pronta'?'selected':''}>🟢 Pronta</option>
+        <option value="entregue" ${g.status==='entregue'?'selected':''}>⚫ Entregue</option>
+      </select>
     `;
+  } else {
+    adminActions = `<button class="btn-secondary btn-sm" onclick="editarGarantia('${g.id}')">✏️ Editar</button>`;
   }
 
   document.getElementById('detalhe-g-content').innerHTML = `
@@ -1156,6 +1163,17 @@ async function mudarStatus(id) {
   await sb.from('garantias').update({ status: next, updated_at: new Date().toISOString() }).eq('id', id);
   closeModal('modal-detalhe-g');
   toast('Status atualizado!');
+  loadGarantias();
+  loadDashboard();
+}
+
+async function mudarStatusDireto(id, novoStatus) {
+  if (currentProfile.role !== 'admin') return;
+  const { error } = await sb.from('garantias').update({ status: novoStatus, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('Erro: ' + error.message); return; }
+  const label = { aberta:'Aberta', em_conserto:'Em conserto', pronta:'Pronta', entregue:'Entregue' };
+  toast('Status: ' + label[novoStatus]);
+  closeModal('modal-detalhe-g');
   loadGarantias();
   loadDashboard();
 }
