@@ -9,7 +9,7 @@
 <title>Lizzie Semijoias</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 :root {
   --plum: #1a0a2e;
@@ -749,8 +749,8 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 // CONFIG
 // ═══════════════════════════════════════════════
 const SUPABASE_URL = 'https://qoouzjntyfzcxnwjksiu.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_O1nxonSVnHpslXfpH8nyJg_WZuQfGLY';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFvb3V6am50eWZ6Y3hud2prc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MDgzMjksImV4cCI6MjA5NDA4NDMyOX0.eOXGwJJshAtRrO_g4aldYau6qeU25Usy7PydvEfN1a4';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = null;
 let currentProfile = null;
