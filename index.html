@@ -895,8 +895,9 @@ async function loadDashboard() {
   const isAdmin = currentProfile.role === 'admin';
   let q = sb.from('garantias').select('*');
   if (!isAdmin) q = q.eq('revendedora_id', currentUser.id);
-  const { data } = await q.order('created_at', { ascending: false }).limit(50);
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(50);
 
+  if (error) { console.error('Dashboard error:', error); return; }
   if (!data) return;
   const hoje = new Date(); hoje.setHours(0,0,0,0);
 
@@ -933,12 +934,17 @@ async function loadDashboard() {
 // ═══════════════════════════════════════════════
 async function loadGarantias() {
   document.getElementById('g-list').innerHTML = '<div class="loading"><div class="spinner">⟳</div><br>Carregando...</div>';
-  const isAdmin = currentProfile.role === 'admin';
-  let q = sb.from('garantias').select('*');
-  if (!isAdmin) q = q.eq('revendedora_id', currentUser.id);
-  const { data } = await q.order('created_at', { ascending: false });
-  allGarantias = data || [];
-  filtrarGarantias();
+  try {
+    const isAdmin = currentProfile.role === 'admin';
+    let q = sb.from('garantias').select('*');
+    if (!isAdmin) q = q.eq('revendedora_id', currentUser.id);
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+    allGarantias = data || [];
+    filtrarGarantias();
+  } catch(e) {
+    document.getElementById('g-list').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Erro ao carregar: ' + e.message + '</p></div>';
+  }
 }
 
 function filtrarGarantias() {
