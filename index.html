@@ -985,6 +985,12 @@ function renderGarantiaCard(g) {
 
   const statusMap = { aberta:'badge-aberta', em_conserto:'badge-em_conserto', pronta:'badge-pronta', entregue:'badge-entregue' };
   const statusLabel = { aberta:'Aberta', em_conserto:'Em conserto', pronta:'Pronta', entregue:'Entregue' };
+  const nextLabel = { aberta:'▶ Em conserto', em_conserto:'▶ Pronta', pronta:'▶ Entregue' };
+  const isAdminCard = currentProfile && currentProfile.role === 'admin';
+  const statusBtn = isAdminCard && g.status !== 'entregue'
+    ? `<button style="background:rgba(201,116,138,0.1);border:1px solid var(--rose);color:var(--rose);border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;"
+        onclick="event.stopPropagation();avancarStatus('${g.id}')">${nextLabel[g.status]}</button>`
+    : `<small style="color:var(--muted)">${formatDate(g.data_entrada)}</small>`;
 
   return `<div class="card garantia-card" onclick="verGarantia('${g.id}')">
     <div class="garantia-header">
@@ -997,7 +1003,7 @@ function renderGarantiaCard(g) {
     </div>
     <div class="garantia-footer">
       <div class="garantia-prazo ${prazoClass}">${prazoTxt}</div>
-      <small style="color:var(--muted)">${formatDate(g.data_entrada)}</small>
+      ${statusBtn}
     </div>
   </div>`;
 }
@@ -1070,8 +1076,10 @@ async function editarGarantia(id) {
   document.getElementById('g-destino').value = g.destino;
   document.getElementById('g-destino-det').value = g.destino_detalhe || '';
   document.getElementById('g-obs').value = g.observacoes || '';
-  document.getElementById('g-status-group').style.display = 'block';
-  document.getElementById('g-status').value = g.status;
+  if (currentProfile.role === 'admin') {
+    document.getElementById('g-status-group').style.display = 'block';
+    document.getElementById('g-status').value = g.status;
+  }
   if (g.foto_url) {
     document.getElementById('g-foto-preview').src = g.foto_url;
     document.getElementById('g-foto-preview').style.display = 'block';
@@ -1084,24 +1092,29 @@ async function salvarGarantia() {
   const desc = document.getElementById('g-desc').value.trim();
   const cliente = document.getElementById('g-cliente').value.trim();
   const problema = document.getElementById('g-problema').value.trim();
-  const destino = document.getElementById('g-destino').value;
   const isAdm = currentProfile.role === 'admin';
-  if (!desc || !cliente || !problema || (isAdm && !destino)) { toast('Preencha os campos obrigatórios'); return; }
+  if (!desc || !cliente || !problema) { toast('Preencha os campos obrigatórios'); return; }
 
   const editId = document.getElementById('g-edit-id').value;
-  let foto_url = editId ? (allGarantias.find(g => g.id === editId) || {}).foto_url : null;
+  const existing = editId ? (allGarantias.find(g => g.id === editId) || {}) : {};
+  let foto_url = existing.foto_url || null;
 
   const fileInput = document.getElementById('g-foto-input');
   if (fileInput.files[0]) {
     const file = fileInput.files[0];
     const ext = file.name.split('.').pop();
     const fname = `${currentUser.id}/${Date.now()}.${ext}`;
-    const { data: upData, error: upErr } = await sb.storage.from('lizzie-fotos').upload(fname, file, { upsert: true });
+    const { error: upErr } = await sb.storage.from('lizzie-fotos').upload(fname, file, { upsert: true });
     if (!upErr) {
       const { data: { publicUrl } } = sb.storage.from('lizzie-fotos').getPublicUrl(fname);
       foto_url = publicUrl;
     }
   }
+
+  // For revendedora: keep existing destino; for admin: use form value
+  const destino = isAdm
+    ? (document.getElementById('g-destino').value || existing.destino || 'outro')
+    : (existing.destino || 'outro');
 
   const payload = {
     revendedora_id: currentUser.id,
@@ -1112,19 +1125,21 @@ async function salvarGarantia() {
     data_entrada: document.getElementById('g-entrada').value,
     prazo_maximo: document.getElementById('g-prazo').value,
     destino,
-    destino_detalhe: document.getElementById('g-destino-det').value.trim() || null,
-    observacoes: document.getElementById('g-obs').value.trim() || null,
+    destino_detalhe: isAdm ? (document.getElementById('g-destino-det').value.trim() || null) : (existing.destino_detalhe || null),
+    observacoes: isAdm ? (document.getElementById('g-obs').value.trim() || null) : (existing.observacoes || null),
     foto_url,
     updated_at: new Date().toISOString()
   };
 
   if (editId) {
-    payload.status = document.getElementById('g-status').value;
-    await sb.from('garantias').update(payload).eq('id', editId);
+    payload.status = isAdm ? document.getElementById('g-status').value : (existing.status || 'aberta');
+    const { error } = await sb.from('garantias').update(payload).eq('id', editId);
+    if (error) { toast('Erro: ' + error.message); return; }
     toast('Garantia atualizada!');
   } else {
     payload.status = 'aberta';
-    await sb.from('garantias').insert(payload);
+    const { error } = await sb.from('garantias').insert(payload);
+    if (error) { toast('Erro: ' + error.message); return; }
     toast('Garantia registrada!');
   }
 
@@ -1141,6 +1156,20 @@ async function mudarStatus(id) {
   await sb.from('garantias').update({ status: next, updated_at: new Date().toISOString() }).eq('id', id);
   closeModal('modal-detalhe-g');
   toast('Status atualizado!');
+  loadGarantias();
+  loadDashboard();
+}
+
+async function avancarStatus(id) {
+  if (currentProfile.role !== 'admin') { toast('Apenas admin pode alterar status'); return; }
+  const g = allGarantias.find(x => x.id === id);
+  if (!g || g.status === 'entregue') return;
+  const steps = ['aberta', 'em_conserto', 'pronta', 'entregue'];
+  const next = steps[steps.indexOf(g.status) + 1];
+  const { error } = await sb.from('garantias').update({ status: next, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast('Erro: ' + error.message); return; }
+  const label = { em_conserto:'Em conserto', pronta:'Pronta', entregue:'Entregue' };
+  toast('Status: ' + label[next]);
   loadGarantias();
   loadDashboard();
 }
