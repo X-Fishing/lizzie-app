@@ -376,6 +376,8 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   display: flex; align-items: center; justify-content: center;
 }
 .fab:hover { transform: scale(1.08); }
+.admin-only { display: none; }
+.is-admin .admin-only { display: block; }
 
 @media (min-width: 600px) {
   .content { padding: 28px 24px 100px; }
@@ -594,8 +596,8 @@ textarea.form-control { resize: vertical; min-height: 80px; }
         <input type="date" id="g-prazo" class="form-control" readonly>
       </div>
     </div>
-    <div class="form-group">
-      <label class="form-label">Encaminhar para *</label>
+    <div class="form-group admin-only" id="g-destino-group">
+      <label class="form-label">Encaminhar para</label>
       <select id="g-destino" class="form-control">
         <option value="">Selecione...</option>
         <option value="rebanho">Rebanho</option>
@@ -604,11 +606,11 @@ textarea.form-control { resize: vertical; min-height: 80px; }
         <option value="outro">Outro</option>
       </select>
     </div>
-    <div class="form-group">
+    <div class="form-group admin-only" id="g-destino-det-group">
       <label class="form-label">Detalhes do destino</label>
       <input type="text" id="g-destino-det" class="form-control" placeholder="Nome da empresa ou endereço">
     </div>
-    <div class="form-group" id="g-status-group" style="display:none">
+    <div class="form-group admin-only" id="g-status-group" style="display:none">
       <label class="form-label">Status</label>
       <select id="g-status" class="form-control">
         <option value="aberta">Aberta</option>
@@ -617,9 +619,9 @@ textarea.form-control { resize: vertical; min-height: 80px; }
         <option value="entregue">Entregue</option>
       </select>
     </div>
-    <div class="form-group">
-      <label class="form-label">Observações</label>
-      <textarea id="g-obs" class="form-control" placeholder="Anotações internas..."></textarea>
+    <div class="form-group admin-only">
+      <label class="form-label">Observações internas</label>
+      <textarea id="g-obs" class="form-control" placeholder="Anotações internas (visível só para admin)..."></textarea>
     </div>
     <div style="display:flex;gap:10px">
       <button class="btn-secondary" style="flex:1" onclick="closeModal('modal-garantia')">Cancelar</button>
@@ -805,6 +807,7 @@ async function loadUser(user) {
   document.getElementById('pending-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('app').style.flexDirection = 'column';
+  if (profile.role === 'admin') document.getElementById('app').classList.add('is-admin');
 
   const badge = profile.role === 'admin' ? '👑 Admin' : '💍 ' + profile.nome.split(' ')[0];
   document.getElementById('user-badge').textContent = badge;
@@ -855,11 +858,13 @@ async function fazerCadastro() {
 
   const { data, error } = await sb.auth.signUp({ email, password: senha });
   if (error) { showMsg(msg, error.message, 'error'); return; }
+  if (!data.user) { showMsg(msg, 'Erro ao criar conta. Tente novamente.', 'error'); return; }
 
-  await sb.from('profiles').insert({
+  const { error: profErr } = await sb.from('profiles').insert({
     id: data.user.id, role: 'revendedora',
     nome, telefone: tel, cidade, aprovada: false
   });
+  if (profErr) { showMsg(msg, 'Erro ao salvar perfil: ' + profErr.message, 'error'); return; }
   showMsg(msg, 'Cadastro enviado! Aguarde aprovação da Lizzie.', 'success');
 }
 
@@ -1074,7 +1079,8 @@ async function salvarGarantia() {
   const cliente = document.getElementById('g-cliente').value.trim();
   const problema = document.getElementById('g-problema').value.trim();
   const destino = document.getElementById('g-destino').value;
-  if (!desc || !cliente || !problema || !destino) { toast('Preencha os campos obrigatórios'); return; }
+  const isAdm = currentProfile.role === 'admin';
+  if (!desc || !cliente || !problema || (isAdm && !destino)) { toast('Preencha os campos obrigatórios'); return; }
 
   const editId = document.getElementById('g-edit-id').value;
   let foto_url = editId ? (allGarantias.find(g => g.id === editId) || {}).foto_url : null;
