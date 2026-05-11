@@ -1009,7 +1009,12 @@ function renderGarantiaCard(g) {
 }
 
 async function verGarantia(id) {
-  const g = allGarantias.find(x => x.id === id) || (await sb.from('garantias').select('*').eq('id', id).single()).data;
+  let g = allGarantias.find(x => x.id === id);
+  if (!g) {
+    const { data } = await sb.from('garantias').select('*').eq('id', id).single();
+    g = data;
+    if (g && !allGarantias.find(x => x.id === id)) allGarantias.push(g);
+  }
   if (!g) return;
 
   const isAdmin = currentProfile.role === 'admin';
@@ -1156,7 +1161,9 @@ async function salvarGarantia() {
 }
 
 async function mudarStatus(id) {
-  const g = allGarantias.find(x => x.id === id);
+  let g = allGarantias.find(x => x.id === id);
+  if (!g) { const { data } = await sb.from('garantias').select('*').eq('id', id).single(); g = data; }
+  if (!g) return;
   const steps = ['aberta', 'em_conserto', 'pronta', 'entregue'];
   const cur = steps.indexOf(g.status);
   const next = steps[Math.min(cur + 1, steps.length - 1)];
@@ -1180,7 +1187,8 @@ async function mudarStatusDireto(id, novoStatus) {
 
 async function avancarStatus(id) {
   if (currentProfile.role !== 'admin') { toast('Apenas admin pode alterar status'); return; }
-  const g = allGarantias.find(x => x.id === id);
+  let g = allGarantias.find(x => x.id === id);
+  if (!g) { const { data } = await sb.from('garantias').select('*').eq('id', id).single(); g = data; }
   if (!g || g.status === 'entregue') return;
   const steps = ['aberta', 'em_conserto', 'pronta', 'entregue'];
   const next = steps[steps.indexOf(g.status) + 1];
